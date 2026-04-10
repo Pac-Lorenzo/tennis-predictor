@@ -6,10 +6,11 @@ The project stores three kinds of data:
 - matches: historical match results used for feature engineering at request time
 """
 
+import os
 from sqlalchemy import create_engine, Column, Float, Integer, String, Date
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DATABASE_URL = "postgresql://tennis:tennis123@localhost:5432/tennisdb"
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://tennis:tennis123@localhost:5432/tennisdb")
 
 # `use_insertmanyvalues=False` keeps inserts compatible with the local
 # Postgres/SQLAlchemy setup used by this project.

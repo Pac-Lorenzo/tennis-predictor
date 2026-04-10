@@ -5,3 +5,5 @@ scikit-learn==1.8.0
 numpy==2.4.4
 joblib==1.4.2
 pandas==2.2.2
+sqlalchemy==2.0.40
+psycopg2-binary==2.9.10
