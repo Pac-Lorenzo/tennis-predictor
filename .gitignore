@@ -1,0 +1,8 @@
+venv/
+data/
+__pycache__/
+*.pyc
+*.pkl
+.DS_Store
+notebooks/.ipynb_checkpoints/
+*.ipynb
