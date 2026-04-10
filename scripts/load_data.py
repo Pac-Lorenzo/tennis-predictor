@@ -134,15 +134,16 @@ def refresh_player_ages(db, df):
     """Update each player's stored age from the most recent rows in the CSVs."""
 
     print("Updating player ages...")
+    age_map = {}
     for _, row in df.iterrows():
-        for role, player_id in (("winner", row["winner_id"]), ("loser", row["loser_id"])):
-            player = db.query(Player).filter_by(player_id=player_id).first()
-            if not player:
-                continue
-            player.age = row.get(f"{role}_age")
-
+        for role, pid in (("winner", row["winner_id"]), ("loser", row["loser_id"])):
+            age = row.get(f"{role}_age")
+            if pid and age:
+                age_map[pid] = age
+    for player_id, age in age_map.items():
+        db.query(Player).filter_by(player_id=player_id).update({"age": age})
     db.commit()
-
+    print(f"Updated ages for {len(age_map)} players")
 
 def upsert_elo_ratings(db, elo_overall, elo_surface):
     """Store the latest Elo snapshot for every player seen in the match data."""
@@ -180,29 +181,31 @@ def insert_matches(db, df):
     """Insert raw historical matches used later for feature engineering."""
 
     print("Writing matches...")
-    # The loader treats `matches` as a full refresh so rerunning the script does
-    # not stack duplicate historical rows.
     db.query(Match).delete()
     db.commit()
 
-    for _, row in df.iterrows():
-        db.add(
-            Match(
-                tourney_date=row["tourney_date"].date(),
-                tourney_name=row["tourney_name"],
-                surface=row["surface"],
-                tourney_level=str(row["tourney_level"]),
-                round=row["round"],
-                winner_id=row["winner_id"],
-                loser_id=row["loser_id"],
-                winner_rank=row["winner_rank"],
-                loser_rank=row["loser_rank"],
-            )
+    records = [
+        Match(
+            tourney_date=row["tourney_date"].date(),
+            tourney_name=row["tourney_name"],
+            surface=row["surface"],
+            tourney_level=str(row["tourney_level"]),
+            round=row["round"],
+            winner_id=row["winner_id"],
+            loser_id=row["loser_id"],
+            winner_rank=row["winner_rank"],
+            loser_rank=row["loser_rank"],
         )
+        for _, row in df.iterrows()
+    ]
 
-    db.commit()
+    CHUNK = 500
+    for i in range(0, len(records), CHUNK):
+        db.bulk_save_objects(records[i:i+CHUNK])
+        db.commit()
+        print(f"  {min(i+CHUNK, len(records))}/{len(records)} matches written...")
+
     print(f"Wrote {len(df)} matches")
-
 
 def main():
     """Run the full import pipeline from CSVs to database tables."""

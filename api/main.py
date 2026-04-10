@@ -157,6 +157,32 @@ def health():
 
     return {"status": "healthy"}
 
+@app.get("/debug/{player_name}")
+def debug_player(player_name: str, surface: str = "Clay"):
+    """Return raw feature values for a single player — useful for sanity-checking the database."""
+
+    db = SessionLocal()
+    try:
+        player = find_player(db, player_name)
+        wr, n = get_recent_wr(db, player.player_id)
+        surf_wr, surf_n = get_recent_wr(db, player.player_id, surface)
+        rest = get_days_rest(db, player.player_id)
+        elo_overall, elo_surf = get_elo(db, player.player_id, surface)
+
+        return {
+            "name": player.name,
+            "recent_wr": wr,
+            "recent_n": n,
+            f"{surface}_wr": surf_wr,
+            f"{surface}_n": surf_n,
+            "days_rest": rest,
+            "overall_elo": round(elo_overall, 1),
+            f"{surface}_elo": round(elo_surf, 1)
+        }
+    finally:
+        db.close()
+
+        
 @app.get("/players")
 def list_players(search: str = ""):
     """List players, optionally filtered by a case-insensitive name fragment."""
