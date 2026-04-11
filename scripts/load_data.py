@@ -53,6 +53,8 @@ def load_matches():
     files = sorted(glob.glob("data/20*.csv"))
     dfs = [pd.read_csv(file_path) for file_path in files]
     df = pd.concat(dfs, ignore_index=True)
+    # Drop any duplicate header rows that appear mid-file
+    df = df[df["tourney_date"] != "tourney_date"]
 
     # Keep rows that have usable ranking information and exclude walkovers or
     # retirements so the Elo replay only contains completed matches.
@@ -108,7 +110,9 @@ def upsert_players(db, df):
     players_seen = {}
     for _, row in df.iterrows():
         for role, player_id in (("winner", row["winner_id"]), ("loser", row["loser_id"])):
-            if player_id in players_seen:
+            # Some CSV rows have a missing player_id (NaN) — skip them to avoid
+            # inserting a NULL primary key.
+            if pd.isna(player_id) or player_id in players_seen:
                 continue
 
             players_seen[player_id] = True
@@ -141,6 +145,8 @@ def refresh_player_ages(db, df):
             if pid and age:
                 age_map[pid] = age
     for player_id, age in age_map.items():
+        if pd.isna(player_id):
+            continue
         db.query(Player).filter_by(player_id=player_id).update({"age": age})
     db.commit()
     print(f"Updated ages for {len(age_map)} players")
@@ -152,6 +158,9 @@ def upsert_elo_ratings(db, elo_overall, elo_surface):
     today = datetime.today().date()
     all_players = set(elo_overall.keys())
 
+    # Filter out NaN player IDs that can slip in from malformed CSV rows.
+    # `p == p` is False for NaN floats — cheaper than importing math.isnan.
+    all_players = {p for p in all_players if isinstance(p, str) and p == p}
     for player_id in all_players:
         existing = db.query(EloRating).filter_by(player_id=player_id).first()
         if existing:
