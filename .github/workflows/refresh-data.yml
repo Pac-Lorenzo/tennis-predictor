@@ -1,0 +1,37 @@
+name: Weekly Data Refresh
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Every Monday at 6am UTC
+  workflow_dispatch:       # Allow manual trigger from GitHub UI
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download latest TML CSVs
+        run: |
+          CURRENT_YEAR=$(date +%Y)
+          PREV_YEAR=$((CURRENT_YEAR - 1))
+          echo "Downloading $CURRENT_YEAR and $PREV_YEAR CSVs..."
+          curl -sSL "https://stats.tennismylife.org/data/${CURRENT_YEAR}.csv" -o "data/${CURRENT_YEAR}.csv"
+          curl -sSL "https://stats.tennismylife.org/data/${PREV_YEAR}.csv" -o "data/${PREV_YEAR}.csv"
+          echo "Downloaded successfully"
+          wc -l data/${CURRENT_YEAR}.csv data/${PREV_YEAR}.csv
+
+      - name: Seed database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/load_data.py
