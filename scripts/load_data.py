@@ -7,11 +7,21 @@ database-backed runtime. Its job is to:
 3. replay the full match history to build overall and surface Elo ratings
 4. store players, Elo snapshots, and matches in Postgres
 
-The script is safe to rerun for the current schema because it refreshes player
-ages, updates Elo snapshots, clears the `matches` table, and then reinserts the
-historical match history from scratch.
+Run modes
+---------
+Full load (first-time setup):
+    python scripts/load_data.py
+    Reads all data/20*.csv files, wipes and rebuilds the matches table,
+    and computes Elo ratings from scratch.
+
+Incremental refresh (weekly CI):
+    python scripts/load_data.py --year 2026
+    Reads only data/2026.csv, loads existing Elo snapshots from the DB
+    as the starting point, replaces only the 2026 rows in the matches
+    table, and updates Elo ratings forward from where they left off.
 """
 
+import argparse
 import glob
 import os
 import sys
@@ -46,11 +56,20 @@ def update_elo(winner_elo, loser_elo):
     )
 
 
-def load_matches():
-    """Read all yearly CSVs, apply cleaning rules, and sort chronologically."""
+def load_matches(year=None):
+    """Read CSVs, apply cleaning rules, and sort chronologically.
 
-    print("Loading CSVs...")
-    files = sorted(glob.glob("data/20*.csv"))
+    If `year` is given, only that year's CSV is loaded (incremental mode).
+    Otherwise all data/20*.csv files are read (full load).
+    """
+
+    if year:
+        print(f"Loading {year} CSV...")
+        files = [f"data/{year}.csv"]
+    else:
+        print("Loading all CSVs...")
+        files = sorted(glob.glob("data/20*.csv"))
+
     dfs = [pd.read_csv(file_path) for file_path in files]
     df = pd.concat(dfs, ignore_index=True)
     # Drop any duplicate header rows that appear mid-file
@@ -73,11 +92,36 @@ def get_elo(store, player_id):
     return store.get(player_id, BASE_ELO)
 
 
-def compute_elos(df):
-    """Replay match history in chronological order to build Elo snapshots."""
+def load_existing_elos(db):
+    """Read current Elo snapshots from the DB into the in-memory dict format.
 
-    elo_overall = {}
-    elo_surface = {"hard": {}, "clay": {}, "grass": {}}
+    Used in incremental mode so the Elo replay picks up exactly where the
+    last full load (or last weekly refresh) left off, rather than starting
+    every player from BASE_ELO.
+    """
+
+    ratings = db.query(EloRating).all()
+    elo_overall = {r.player_id: r.overall_elo for r in ratings}
+    elo_surface = {
+        "hard":  {r.player_id: r.hard_elo  for r in ratings},
+        "clay":  {r.player_id: r.clay_elo  for r in ratings},
+        "grass": {r.player_id: r.grass_elo for r in ratings},
+    }
+    print(f"Loaded existing Elo for {len(ratings)} players from DB")
+    return elo_overall, elo_surface
+
+
+def compute_elos(df, elo_overall=None, elo_surface=None):
+    """Replay match history in chronological order to build Elo snapshots.
+
+    Accepts optional starting dicts so incremental runs can continue from
+    the existing DB snapshots instead of resetting everyone to BASE_ELO.
+    """
+
+    if elo_overall is None:
+        elo_overall = {}
+    if elo_surface is None:
+        elo_surface = {"hard": {}, "clay": {}, "grass": {}}
 
     print("Computing ELO ratings...")
     for _, row in df.iterrows():
@@ -186,11 +230,25 @@ def upsert_elo_ratings(db, elo_overall, elo_surface):
     print(f"Wrote ELO for {len(all_players)} players")
 
 
-def insert_matches(db, df):
-    """Insert raw historical matches used later for feature engineering."""
+def insert_matches(db, df, year=None):
+    """Insert raw historical matches used later for feature engineering.
+
+    If `year` is given, only that year's rows are deleted before reinserting
+    so historical match data from other years is preserved (incremental mode).
+    Otherwise the entire table is wiped and rebuilt (full load).
+    """
 
     print("Writing matches...")
-    db.query(Match).delete()
+    if year:
+        # Delete only the rows belonging to the target year so the rest of
+        # the match history — which drives recent-form and H2H lookups — stays intact.
+        deleted = db.query(Match).filter(
+            Match.tourney_date >= f"{year}-01-01",
+            Match.tourney_date <= f"{year}-12-31",
+        ).delete(synchronize_session=False)
+        print(f"  Cleared {deleted} existing {year} rows")
+    else:
+        db.query(Match).delete()
     db.commit()
 
     records = [
@@ -217,18 +275,37 @@ def insert_matches(db, df):
     print(f"Wrote {len(df)} matches")
 
 def main():
-    """Run the full import pipeline from CSVs to database tables."""
+    """Run the import pipeline from CSVs to database tables.
 
-    df = load_matches()
-    elo_overall, elo_surface = compute_elos(df)
+    Full load:        python scripts/load_data.py
+    Incremental:      python scripts/load_data.py --year 2026
+    """
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--year", type=int, default=None,
+        help="Refresh only this year's data, continuing Elo from existing DB snapshots."
+    )
+    args = parser.parse_args()
+
+    df = load_matches(args.year)
 
     init_db()
     db = SessionLocal()
     try:
+        if args.year:
+            # Incremental: start Elo from the existing DB snapshots so ratings
+            # carry forward rather than resetting to BASE_ELO.
+            elo_overall, elo_surface = load_existing_elos(db)
+        else:
+            elo_overall, elo_surface = None, None
+
+        elo_overall, elo_surface = compute_elos(df, elo_overall, elo_surface)
+
         upsert_players(db, df)
         refresh_player_ages(db, df)
         upsert_elo_ratings(db, elo_overall, elo_surface)
-        insert_matches(db, df)
+        insert_matches(db, df, args.year)
     finally:
         db.close()
 

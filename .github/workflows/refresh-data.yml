@@ -21,17 +21,15 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Download latest TML CSVs
+      - name: Download latest ATP CSV
         run: |
           CURRENT_YEAR=$(date +%Y)
-          PREV_YEAR=$((CURRENT_YEAR - 1))
-          echo "Downloading $CURRENT_YEAR and $PREV_YEAR CSVs..."
+          echo "Downloading $CURRENT_YEAR CSV..."
           curl -sSL "https://stats.tennismylife.org/data/${CURRENT_YEAR}.csv" -o "data/${CURRENT_YEAR}.csv"
-          curl -sSL "https://stats.tennismylife.org/data/${PREV_YEAR}.csv" -o "data/${PREV_YEAR}.csv"
           echo "Downloaded successfully"
-          wc -l data/${CURRENT_YEAR}.csv data/${PREV_YEAR}.csv
+          wc -l data/${CURRENT_YEAR}.csv
 
-      - name: Seed database
+      - name: Refresh database (incremental)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python scripts/load_data.py
+        run: python scripts/load_data.py --year $(date +%Y)
