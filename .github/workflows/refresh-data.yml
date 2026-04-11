@@ -24,6 +24,7 @@ jobs:
       - name: Download latest ATP CSV
         run: |
           CURRENT_YEAR=$(date +%Y)
+          mkdir -p data
           echo "Downloading $CURRENT_YEAR CSV..."
           curl -sSL "https://stats.tennismylife.org/data/${CURRENT_YEAR}.csv" -o "data/${CURRENT_YEAR}.csv"
           echo "Downloaded successfully"
