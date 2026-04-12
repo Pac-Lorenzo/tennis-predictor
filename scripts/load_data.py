@@ -258,6 +258,7 @@ def insert_matches(db, df, year=None):
             surface=row["surface"],
             tourney_level=str(row["tourney_level"]),
             round=row["round"],
+            score=str(row["score"]) if not __import__('pandas').isna(row["score"]) else None,
             winner_id=row["winner_id"],
             loser_id=row["loser_id"],
             winner_rank=row["winner_rank"],

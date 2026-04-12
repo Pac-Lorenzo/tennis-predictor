@@ -52,6 +52,7 @@ class Match(Base):
     surface         = Column(String)
     tourney_level   = Column(String)
     round           = Column(String)
+    score           = Column(String)
     winner_id       = Column(String)
     loser_id        = Column(String)
     winner_rank     = Column(Float)
