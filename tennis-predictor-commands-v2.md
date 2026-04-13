@@ -248,3 +248,18 @@ curl "http://<PUBLIC_IP>/debug/Djokovic?surface=Clay"
 | Supabase DB | aws-1-us-east-1.pooler.supabase.com |
 
 
+
+## Local Testing: # Terminal 1 — start API
+cd ~/Documents/Tennis-Predictor
+source venv/bin/activate
+export DATABASE_URL="postgresql://postgres.vvnirrqkkyybivatujux:Chiquitul457622@aws-1-us-east-1.pooler.supabase.com:5432/postgres"
+uvicorn api.main:app --reload --port 8001
+
+# Terminal 2 — test predictions
+curl -s -X POST http://localhost:8001/predict \
+  -H "Content-Type: application/json" \
+  -d '{"player1_name":"PLAYER1","player2_name":"PLAYER2","surface":"Clay","tournament_level":"G","round":"F","best_of":5,"indoor":false}' | python3 -m json.tool
+
+# Or update frontend .env.local to point to localhost
+# ECS_API_URL=http://localhost:8001
+# then npm run dev in tennis-predictor-frontend

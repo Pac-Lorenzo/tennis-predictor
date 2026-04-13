@@ -7,7 +7,7 @@ The project stores three kinds of data:
 """
 
 import os
-from sqlalchemy import create_engine, Column, Float, Integer, String, Date
+from sqlalchemy import create_engine, Column, Float, Integer, String, Date, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://tennis:tennis123@localhost:5432/tennisdb")
@@ -57,12 +57,33 @@ class Match(Base):
     loser_id        = Column(String)
     winner_rank     = Column(Float)
     loser_rank      = Column(Float)
+    winner_rank_points = Column(Float)
+    loser_rank_points = Column(Float)
 
 def init_db():
-    """Create any tables that do not already exist."""
+    """Create tables and backfill lightweight schema changes when needed."""
 
     Base.metadata.create_all(engine)
-    print("Tables created!")
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE matches "
+                "ADD COLUMN IF NOT EXISTS score VARCHAR"
+            )
+        )
+        conn.execute(
+            text(
+                "ALTER TABLE matches "
+                "ADD COLUMN IF NOT EXISTS winner_rank_points DOUBLE PRECISION"
+            )
+        )
+        conn.execute(
+            text(
+                "ALTER TABLE matches "
+                "ADD COLUMN IF NOT EXISTS loser_rank_points DOUBLE PRECISION"
+            )
+        )
+    print("Tables created and schema ensured!")
 
 if __name__ == "__main__":
     init_db()

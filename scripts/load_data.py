@@ -74,6 +74,12 @@ def load_matches(year=None):
     df = pd.concat(dfs, ignore_index=True)
     # Drop any duplicate header rows that appear mid-file
     df = df[df["tourney_date"] != "tourney_date"]
+    df["winner_rank_points"] = pd.to_numeric(
+        df["winner_rank_points"], errors="coerce"
+    ).fillna(0)
+    df["loser_rank_points"] = pd.to_numeric(
+        df["loser_rank_points"], errors="coerce"
+    ).fillna(0)
 
     # Keep rows that have usable ranking information and exclude walkovers or
     # retirements so the Elo replay only contains completed matches.
@@ -263,6 +269,8 @@ def insert_matches(db, df, year=None):
             loser_id=row["loser_id"],
             winner_rank=row["winner_rank"],
             loser_rank=row["loser_rank"],
+            winner_rank_points=row["winner_rank_points"],
+            loser_rank_points=row["loser_rank_points"],
         )
         for _, row in df.iterrows()
     ]
