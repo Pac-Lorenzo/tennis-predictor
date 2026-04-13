@@ -108,9 +108,12 @@ def get_h2h(db, p1_id: str, p2_id: str, surface: str = None):
         return 0.5, 0.5, 0
 
     p1_wins = sum(1 for m in matches if m.winner_id == p1_id)
-    # Laplace smoothing: (wins+1)/(total+2) — matches training pipeline
+    p2_wins = total - p1_wins
+    # Compute both rates independently (same denominator) to avoid floating-point
+    # asymmetry: (1 - p1_wr) ≠ p2_wr when the division path differs.
     p1_wr = (p1_wins + 1) / (total + 2)
-    return p1_wr, 1 - p1_wr, total
+    p2_wr = (p2_wins + 1) / (total + 2)
+    return p1_wr, p2_wr, total
 
 def get_days_rest(db, player_id: str):
     last = db.query(Match).filter(
