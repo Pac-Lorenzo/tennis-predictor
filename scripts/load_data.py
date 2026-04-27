@@ -16,16 +16,16 @@ Full load (first-time setup):
 
 Incremental refresh (weekly CI):
     python scripts/load_data.py --year 2026
-    Reads only data/2026.csv, loads existing Elo snapshots from the DB
-    as the starting point, replaces only the 2026 rows in the matches
-    table, and updates Elo ratings forward from where they left off.
+    Reads only data/2026.csv, rebuilds the pre-2026 Elo baseline from the
+    DB's older match history, replaces only the 2026 rows in the matches
+    table, and replays 2026 forward exactly once.
 """
 
 import argparse
 import glob
 import os
 import sys
-from datetime import datetime
+from datetime import date, datetime
 
 import pandas as pd
 
@@ -98,22 +98,36 @@ def get_elo(store, player_id):
     return store.get(player_id, BASE_ELO)
 
 
-def load_existing_elos(db):
-    """Read current Elo snapshots from the DB into the in-memory dict format.
+def load_existing_elos_before_year(db, year):
+    """Rebuild Elo snapshots from DB matches strictly before `year`.
 
-    Used in incremental mode so the Elo replay picks up exactly where the
-    last full load (or last weekly refresh) left off, rather than starting
-    every player from BASE_ELO.
+    This keeps incremental refreshes idempotent. Reusing the latest Elo snapshot
+    from the DB would double-apply the target year's matches every time the same
+    `--year` refresh runs again.
     """
 
-    ratings = db.query(EloRating).all()
-    elo_overall = {r.player_id: r.overall_elo for r in ratings}
-    elo_surface = {
-        "hard":  {r.player_id: r.hard_elo  for r in ratings},
-        "clay":  {r.player_id: r.clay_elo  for r in ratings},
-        "grass": {r.player_id: r.grass_elo for r in ratings},
-    }
-    print(f"Loaded existing Elo for {len(ratings)} players from DB")
+    cutoff = date(year, 1, 1)
+    rows = (
+        db.query(Match)
+        .filter(Match.tourney_date < cutoff)
+        .order_by(Match.tourney_date.asc(), Match.id.asc())
+        .all()
+    )
+
+    if not rows:
+        print(f"No historical matches found before {year}; starting Elo from baseline")
+        return {}, {"hard": {}, "clay": {}, "grass": {}}
+
+    history = pd.DataFrame(
+        {
+            "winner_id": row.winner_id,
+            "loser_id": row.loser_id,
+            "surface": row.surface,
+        }
+        for row in rows
+    )
+    elo_overall, elo_surface = compute_elos(history)
+    print(f"Rebuilt starting Elo from {len(rows)} matches before {year}")
     return elo_overall, elo_surface
 
 
@@ -293,7 +307,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--year", type=int, default=None,
-        help="Refresh only this year's data, continuing Elo from existing DB snapshots."
+        help="Refresh only this year's data, rebuilding Elo from matches before that year."
     )
     args = parser.parse_args()
 
@@ -303,9 +317,9 @@ def main():
     db = SessionLocal()
     try:
         if args.year:
-            # Incremental: start Elo from the existing DB snapshots so ratings
-            # carry forward rather than resetting to BASE_ELO.
-            elo_overall, elo_surface = load_existing_elos(db)
+            # Incremental: rebuild Elo through the end of the previous season so
+            # rerunning the same year does not apply that year's results twice.
+            elo_overall, elo_surface = load_existing_elos_before_year(db, args.year)
         else:
             elo_overall, elo_surface = None, None
 

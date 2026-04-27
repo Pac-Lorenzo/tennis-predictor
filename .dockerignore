@@ -1,0 +1,12 @@
+venv/
+data/
+__pycache__/
+*.pyc
+.git/
+.github/
+.DS_Store
+notebooks/
+scripts/
+tennis-predictor-commands-v2.md
+model/*_retrained*.json
+model/*_retrained*.pkl

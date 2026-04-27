@@ -57,11 +57,15 @@ def predict(features: dict) -> dict:
     - combine to guarantee complementarity
     """
     p_ab = _score_one_order(features)
-    swapped = _swap_features(features)
-    p_ba = _score_one_order(swapped)
 
-    # p_ba is probability that B wins when B is slot p1
-    p1_prob = round((p_ab + (1 - p_ba)) / 2, 3)
+    if getattr(model, "is_symmetric", False):
+        p1_prob = round(p_ab, 3)
+    else:
+        swapped = _swap_features(features)
+        p_ba = _score_one_order(swapped)
+        # p_ba is probability that B wins when B is slot p1
+        p1_prob = round((p_ab + (1 - p_ba)) / 2, 3)
+
     p2_prob = round(1 - p1_prob, 3)
 
     gap = abs(p1_prob - p2_prob)

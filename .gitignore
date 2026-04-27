@@ -3,6 +3,7 @@ data/
 __pycache__/
 *.pyc
 *.pkl
+!model/tennis_model_v2.pkl
 .DS_Store
 notebooks/.ipynb_checkpoints/
 *.ipynb

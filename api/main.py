@@ -49,7 +49,7 @@ class MatchResponse(BaseModel):
 # ── Encoding maps ─────────────────────────────────────────────
 SURFACE_MAP = {'Hard': 0, 'Clay': 1, 'Grass': 2, 'Carpet': 0}
 LEVEL_MAP   = {'250': 0, '500': 1, 'A': 2, 'M': 3, 'G': 4, 'D': 5, 'O': 5, 'F': 6}
-ROUND_MAP   = {'R128': 1, 'R64': 2, 'R32': 3, 'R16': 4, 'QF': 5, 'SF': 6, 'F': 7, 'RR': 3, 'BR': 6}
+ROUND_MAP   = {'RR': 0, 'R128': 1, 'R64': 2, 'R32': 3, 'R16': 4, 'QF': 5, 'SF': 6, 'F': 7, 'BR': 6}
 
 # ── Helper functions ──────────────────────────────────────────
 def find_player(db, name: str):
